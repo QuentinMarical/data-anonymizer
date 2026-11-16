@@ -27,6 +27,17 @@ READERS = re.compile(
     r"|get-content|gc|select-string|sls|import-csv|sqlite3|psql|mysql|sqlcmd|mongosh"
     r"|git\s+(?:show|diff|blame|grep|log\s+-p))(?![\w-])")
 EXTERNAL = {"WebSearch", "WebFetch", "Artifact"}
+# Fichiers qui lisent réellement le contenu (évalués sur la commande nettoyée des chaînes)
+INTERPRETER_READ = re.compile(
+    r"(?i)open\(|read_text|readallText|get-content|import-csv|readfilesync|sqlite3\.connect")
+SKILL_DIR = Path(__file__).resolve().parent.parent   # la skill ne contient que des exemples fictifs
+
+
+def strip_text(command):
+    """Retire heredocs, here-strings et chaînes : leur contenu est du texte, pas une lecture."""
+    command = re.sub(r"<<-?\s*['\"]?(\w+)['\"]?.*?\n\1\b", "", command, flags=re.S)
+    command = re.sub(r"@'.*?'@|@\".*?\"@", "", command, flags=re.S)
+    return re.sub(r"\"(?:[^\"\\]|\\.)*\"|'[^']*'", "\"\"", command)
 
 
 def summary(stats):
@@ -89,6 +100,8 @@ class Guard:
     # ------------------------------------------------------------- contrôles
     def check_file(self, raw):
         path = self.resolve(raw)
+        if self.inside(path, SKILL_DIR):
+            return
         if self.inside(path, self.vault_dir) and not self.inside(path, self.mirror_dir):
             deny("la table d'alias et le fichier de termes restent sur le poste : lecture refusée.")
         if self.inside(path, self.mirror_dir) or not path.is_file():
@@ -114,7 +127,7 @@ class Guard:
         if tool_input.get("output_mode") != "content":
             return
         target = self.resolve(tool_input.get("path") or str(self.cwd))
-        if self.inside(target, self.mirror_dir):
+        if self.inside(target, self.mirror_dir) or self.inside(target, SKILL_DIR):
             return
         if target.is_file():
             return self.check_file(str(target))
@@ -123,10 +136,12 @@ class Guard:
              f"dans {self.mirror_dir}.")
 
     def check_shell(self, command):
-        if re.search(r"(?i)\.anonymizer[\\/]+(mapping\.json|terms\.txt)", command):
+        code = strip_text(command)
+        secret_path = re.search(r"(?i)\.anonymizer[\\/]+(mapping\.json|terms\.txt)", command)
+        if secret_path and (READERS.search(code) or INTERPRETER_READ.search(command)):
             deny("la table d'alias et le fichier de termes restent sur le poste.")
-        if READERS.search(command) and not re.search(r"anonymize\.py\"?\s+(--vault\s+\S+\s+)?mask\b",
-                                                      command):
+        if READERS.search(code) and not re.search(r"anonymize\.py\"?\s+(--vault\s+\S+\s+)?mask\b",
+                                                  command):
             deny("cette commande affiche du contenu de fichier ou de base sans masquage. "
                  "Utiliser Read (contrôlé), ou terminer la commande par "
                  "`| python <skill>/scripts/anonymize.py mask -`.")
