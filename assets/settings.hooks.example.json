@@ -15,7 +15,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Read|Grep|Bash|PowerShell|WebSearch|WebFetch|Artifact|mcp__.*",
+        "matcher": "Read|Grep|Glob|Write|Edit|Bash|PowerShell|WebSearch|WebFetch|Artifact|mcp__.*",
         "hooks": [
           {
             "type": "command",

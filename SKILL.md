@@ -30,7 +30,11 @@ Cela ne bloque pas le travail : l'agent écrit le programme avec les alias, et l
 | Lecture d'un chemin déclaré `deny-path:` | Toujours refusée, sans copie. |
 | Fichier binaire ou trop volumineux | Refusé, sauf chemin déclaré `allow-path:`. |
 | `Grep` affichant le contenu d'un dossier non anonymisé | Refusé. Utiliser `files_with_matches` puis `Read`, ou chercher dans le miroir. |
-| Commande shell qui affiche du contenu (`cat`, `grep`, `Get-Content`, `git diff`, client SQL…) | Refusée, sauf si elle se termine par `| python …/anonymize.py mask -`. |
+| Commande shell qui affiche du contenu (`cat`, `grep`, `Get-Content`, `git diff`, client SQL…) | Refusée, sauf si elle se termine par `| python …/anonymize.py mask -` (sans chaînage `&&`, `;`, `||`). |
+| Lecture de fichier par un interpréteur ou un outil de données (`python -c "open(…)"`, `jq . fichier`) | Refusée, sauf pipe final vers `mask -`. Les tests, builds et `git status` ne sont pas concernés. |
+| `Glob` dont des noms de fichiers contiennent des valeurs sensibles | Refusé ; la liste n'est pas affichée. |
+| `Write` / `Edit` contenant des valeurs en clair | Refusé. Écrire les alias `__ANON_…__` est autorisé. |
+| `Write` / `Edit` sur un fichier qui contient déjà des valeurs réelles | Refusé. Passer par la copie dans `.anonymizer/masked/` puis `restore`. |
 | Recherche web, récupération d'URL, connecteur MCP, publication contenant une valeur sensible | Refusé. |
 
 Quand le garde refuse une action, suivre l'indication donnée dans le message de refus. Ne jamais chercher à le contourner par un autre outil.
@@ -95,12 +99,15 @@ python <dossier-de-la-skill>/scripts/anonymize.py alias "Nom du client"
 3. Démarrer une nouvelle session pour que les hooks soient chargés.
 4. Vérifier : demander la lecture d'un fichier contenant une valeur déclarée ; elle doit être refusée avec le chemin d'une copie anonymisée.
 
-`"onFailure": "block"` fait échouer fermé : si le script plante ou si Python est absent, l'action est bloquée plutôt qu'autorisée.
+`"onFailure": "block"` fait échouer fermé : si le script plante ou si Python est absent, l'action est bloquée plutôt qu'autorisée. Il ne protège que contre un hook qui ne démarre pas, pas contre une décision de l'agent.
+
+**Commande Python** : les hooks appellent `python`. Sous Windows, c'est généralement la bonne commande. Sous Linux et macOS, il faut souvent `python3` : remplacer `python` par `python3` dans le fichier de hooks avant de l'activer. Si la commande est introuvable, l'action est bloquée.
 
 ## Limites à annoncer à l'utilisateur
 
 - La détection repose sur des motifs et sur le fichier de termes. Une donnée ni reconnue ni déclarée passe en clair. Pour un dossier entier de données client, utiliser `deny-path:`.
-- Le contrôle des commandes shell est une liste de commandes connues, pas une analyse complète : un programme qui affiche lui-même des données (script, test, serveur) n'est pas filtré. Rediriger sa sortie vers `mask -`.
+- Le contrôle des commandes shell est une liste de commandes et de lectures connues, pas une analyse complète : un programme qui affiche lui-même des données (script, test, serveur) n'est pas filtré. Rediriger sa sortie vers `mask -`.
+- Un hook `PreToolUse` ne voit pas la sortie d'une commande. Un contrôle de sortie (`PostToolUse`) arriverait trop tard : le résultat est déjà renvoyé au modèle. Seule une interdiction a priori protège réellement.
 - Le garde protège contre les fuites accidentelles d'un agent coopératif. Ce n'est pas une barrière contre un programme malveillant ni un pare-feu réseau.
 - Ce qui a été envoyé avant l'activation du garde est déjà parti.
 - Images et PDF ne peuvent pas être anonymisés : ils sont refusés par défaut.

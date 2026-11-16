@@ -151,6 +151,9 @@ RULES = [
     ("SECRET", r"\b(?:sk-[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}"
                r"|glpat-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|xox[abprs]-[A-Za-z0-9-]{10,}"
                r"|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})", 0, None),
+    # valeur entre guillemets, avec espaces possibles (groupe 2 = valeur, \1 = guillemet fermant)
+    ("SECRET", r"(?i)" + SECRET_KEYS + r"\w*[\"']?\s*[:=]\s*([\"'])([^\"'\r\n]{4,})\1", 2,
+     secret_value_ok),
     ("SECRET", r"(?i)" + SECRET_KEYS + r"\w*[\"']?\s*[:=]\s*[\"']?([^\s\"',;]{6,})", 1,
      secret_value_ok),
     ("EMAIL", r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", 0, None),
@@ -158,7 +161,8 @@ RULES = [
     ("NIR", r"(?<!\d)[12] ?\d{2} ?(?:0[1-9]|1[0-2]) ?(?:\d{2}|2[AB]) ?\d{3} ?\d{3}(?: ?\d{2})?(?!\d)",
      0, None),
     ("CARD", r"(?<![\d_])\d(?:[ -]?\d){12,18}(?![\d_])", 0, luhn_ok),
-    ("PHONE", r"(?<![\w+])(?:\+33[ .]?|0)[1-9](?:[ .-]?\d{2}){4}(?!\d)", 0, None),
+    ("PHONE", r"(?<![\w+])(?:\+33[ .-]?(?:\(0\)[ .-]?)?|0033[ .-]?|0)[1-9](?:[ .-]?\d{2}){4}(?!\d)",
+     0, None),
     ("USER", r"(?i)\b[A-Z]:[\\/]+Users[\\/]+([^\\/\s\"'<>|:]+)", 1,
      lambda v: v.lower() not in ("public", "default", "all users")),
     ("USER", r"(?<![\w.])/(?:home|Users)/([^/\s\"'<>:]+)", 1,
@@ -190,9 +194,12 @@ def mask_text(text, vault, cfg, stats):
 
     # termes fournis par l'utilisateur (noms de projet, de client, de machine...)
     for term in cfg.terms:
-        text = re.sub(re.escape(term), lambda m: put("TERM", m.group(0)), text, flags=re.I)
+        pat = re.escape(term)
+        if re.match(r"\w", term[0]) and re.match(r"\w", term[-1]):
+            pat = r"(?<!\w)" + pat + r"(?!\w)"         # « Client » ne touche pas « HttpClient »
+        text = re.sub(pat, lambda m: put("TERM", m.group(0)), text, flags=re.I)
 
-    for cat, rx, group, check in RULES[:3]:            # secrets d'abord
+    for cat, rx, group, check in RULES[:4]:            # secrets d'abord (4 règles)
         text = rx.sub(group_sub(cat, group, check), text)
 
     def url_repl(m):
@@ -204,7 +211,7 @@ def mask_text(text, vault, cfg, stats):
     text = URL_RE.sub(url_repl, text)
     text = UNC_RE.sub(lambda m: "\\\\" + put("HOST", m.group(1)), text)
 
-    for cat, rx, group, check in RULES[3:]:
+    for cat, rx, group, check in RULES[4:]:
         text = rx.sub(group_sub(cat, group, check), text)
 
     suffixes = "|".join(re.escape(s) for s in INTERNAL_SUFFIXES + tuple(cfg.domains))
