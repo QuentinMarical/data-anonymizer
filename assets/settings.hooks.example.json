@@ -1,0 +1,30 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"C:/CHEMIN/VERS/data-anonymizer/scripts/guard_hook.py\" prompt",
+            "timeout": 20,
+            "onFailure": "block",
+            "statusMessage": "Contrôle des données sensibles…"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Read|Grep|Bash|PowerShell|WebSearch|WebFetch|Artifact|mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"C:/CHEMIN/VERS/data-anonymizer/scripts/guard_hook.py\" pre",
+            "timeout": 30,
+            "onFailure": "block"
+          }
+        ]
+      }
+    ]
+  }
+}

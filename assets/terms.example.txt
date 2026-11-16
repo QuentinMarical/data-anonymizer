@@ -1,0 +1,21 @@
+# Fichier de termes : à copier dans <projet>/.anonymizer/terms.txt puis à remplir.
+# Ce dossier est ignoré par git et illisible pour l'agent IA : le fichier reste sur le poste.
+
+# Termes littéraux à remplacer par un alias (insensible à la casse), un par ligne :
+# Nom du client
+# Nom d'un projet confidentiel
+# Prénom Nom d'un interlocuteur
+
+# Domaines dont tous les hôtes sont internes :
+# domain:ma-societe.fr
+
+# Valeurs à ne jamais masquer :
+# allow:noreply@anthropic.com
+# allow:redis
+
+# Chemins que l'agent ne peut jamais lire, même anonymisés (données client brutes) :
+# deny-path:data/clients/*
+# deny-path:*.sqlite
+
+# Chemins lisibles sans contrôle (binaires sans donnée sensible, par exemple) :
+# allow-path:docs/images/*
