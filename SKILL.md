@@ -107,6 +107,33 @@ python <dossier-de-la-skill>/scripts/toggle.py --project <dossier-du-projet> tog
 
 **Limite de Claude Code** : après `on` ou `off`, il faut redémarrer la session (`/exit` puis `claude`). Claude Code ne recharge `settings.local.json` qu'au démarrage : tant que la session n'est pas redémarrée, le garde reste dans son état précédent.
 
+## Connecteur MCP : outils pour toutes les applications
+
+`scripts/mcp_server.py` expose la skill comme serveur MCP (stdio, sans dépendance). Ses outils :
+
+| Outil | Rôle |
+|---|---|
+| `scan` | Compte les valeurs sensibles d'un fichier ou dossier, sans rien afficher |
+| `mask` | Écrit une copie masquée dans `.anonymizer/masked/` ; l'agent lit cette copie |
+| `restore` | Réinjecte les vraies valeurs dans un fichier local ; le contenu n'est pas renvoyé |
+| `alias` | Crée ou retrouve l'alias d'une valeur ; seul l'alias est renvoyé |
+| `guard_status` | Indique si le garde est actif sur le projet |
+| `guard_enable` | Active le garde sur le projet |
+
+Il n'existe **pas** de `guard_disable` : un outil de désactivation permettrait à l'agent de contourner la protection. Désactiver se fait avec `toggle.py` ou le lanceur, depuis le poste.
+
+**Claude Code** : le garde repose sur les hooks, qui bloquent avant chaque lecture, écriture ou envoi. Le connecteur MCP ajoute les outils de masquage et de restauration. C'est la combinaison à utiliser.
+
+**Claude Desktop et les autres applications MCP** (Cursor, Windsurf, Cline, Roo Code) : ces applications n'ont pas de hooks. Rien n'empêche l'agent de lire directement un fichier sensible avec ses propres outils. La protection est donc **consultative** : elle ne vaut que si l'agent passe par les outils `scan`, `mask` et `restore`. Pour un usage sensible, préférer Claude Code avec les hooks.
+
+Installation :
+
+- **Claude Desktop** : copier le contenu de `assets/claude_desktop_config.example.json` dans `%APPDATA%\Claude\claude_desktop_config.json` (ou ajouter le serveur dans le menu Connecteurs), puis remplacer les chemins. Redémarrer Claude Desktop.
+- **Claude Code (par projet)** : copier `assets/mcp.example.json` vers `.mcp.json` à la racine du projet, puis remplacer les chemins.
+- **Cursor, Windsurf, Cline / Roo Code** : ajouter la même entrée `mcpServers` dans leur fichier de configuration MCP, selon la documentation de l'application.
+
+Sous Linux et macOS, remplacer `python` par `python3` dans ces fichiers. `CLAUDE_PROJECT_DIR` doit désigner le dossier du projet : les outils n'agissent que dans ce dossier.
+
 ## Activer le garde à la main
 
 À faire par projet, sur demande de l'utilisateur uniquement :
@@ -134,6 +161,8 @@ python <dossier-de-la-skill>/scripts/toggle.py --project <dossier-du-projet> tog
 - `scripts/anonymize.py` : `mask`, `scan`, `restore`, `alias` (Python 3, sans dépendance).
 - `scripts/guard_hook.py` : garde local appelé par les hooks.
 - `scripts/toggle.py` : active, désactive ou affiche l'état du garde dans un projet.
+- `scripts/mcp_server.py` : connecteur MCP (outils `scan`, `mask`, `restore`, `alias`, `guard_status`, `guard_enable`).
+- `assets/claude_desktop_config.example.json` et `assets/mcp.example.json` : configurations MCP d'exemple.
 - `assets/toggle-anonymizer.bat` et `assets/toggle-anonymizer.sh` : lanceurs de la bascule.
 - `tests/test_guard.py` (dépôt) : tests du garde et de la fusion des hooks (`python -m unittest discover -s tests`).
 - `assets/settings.hooks.example.json` : configuration des hooks à fusionner.

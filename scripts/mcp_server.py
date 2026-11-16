@@ -6,6 +6,12 @@ Outils :
   mask     écrit une copie masquée (alias __ANON_…__) dans .anonymizer/masked/
   restore  réinjecte les vraies valeurs dans un fichier local ; le contenu n'est jamais renvoyé
   alias    crée ou retrouve l'alias d'une valeur (seul l'alias est renvoyé)
+  guard_status   indique si le garde est actif sur le projet
+  guard_enable   active le garde sur le projet
+
+Volontairement absent : une désactivation du garde par l'agent. Un outil de ce type
+permettrait au modèle de contourner la protection. Désactiver se fait avec
+scripts/toggle.py ou le lanceur, depuis le poste.
 
 Tous les chemins doivent rester dans le projet. La table d'alias n'est jamais renvoyée.
 """
@@ -18,6 +24,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import anonymize as A  # noqa: E402
+import toggle  # noqa: E402
 
 PROTOCOL = "2024-11-05"
 ROOT = Path(os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()).resolve()
@@ -120,6 +127,18 @@ def tool_alias(args):
     return f"Alias : {token}"
 
 
+def tool_guard_status(args):
+    state = "ACTIF" if toggle.is_active(ROOT) else "INACTIF"
+    return f"Garde : {state} (projet : {ROOT})"
+
+
+def tool_guard_enable(args):
+    created = toggle.enable(ROOT)
+    extra = " Fichier .anonymizer/terms.txt créé : à remplir." if created else ""
+    return ("Garde : ACTIF." + extra +
+            " Redémarrer la session Claude Code pour appliquer ce changement.")
+
+
 PATH = {"type": "string", "description": "fichier ou dossier, relatif au projet"}
 TOOLS = {
     "scan": (tool_scan, "Compte les valeurs sensibles d'un fichier ou dossier, sans rien afficher.",
@@ -134,6 +153,10 @@ TOOLS = {
                   "value": {"type": "string"},
                   "category": {"type": "string", "description": "EMAIL, HOST, TERM, SECRET…"}},
                "required": ["value"]}),
+    "guard_status": (tool_guard_status, "Indique si le garde data-anonymizer est actif sur le projet.",
+                     {"type": "object", "properties": {}}),
+    "guard_enable": (tool_guard_enable, "Active le garde sur le projet (hooks dans .claude/settings.local.json).",
+                     {"type": "object", "properties": {}}),
 }
 
 
@@ -166,8 +189,9 @@ def handle(msg):
         try:
             text = TOOLS[name][0](args)
             return reply(mid, {"content": [{"type": "text", "text": text}], "isError": False})
-        except Exception as exc:                 # message court, sans contenu de fichier
-            traceback.print_exc(file=sys.stderr)
+        except (Exception, SystemExit) as exc:   # SystemExit : erreurs de toggle.py, sans arrêter le serveur
+            if not isinstance(exc, (SystemExit, ValueError)):   # erreurs attendues : pas de trace
+                traceback.print_exc(file=sys.stderr)
             return reply(mid, {"content": [{"type": "text", "text": f"Erreur : {exc}"}],
                                "isError": True})
     return reply(mid, error={"code": -32601, "message": f"méthode non gérée : {method}"})
@@ -175,7 +199,7 @@ def handle(msg):
 
 def main():
     sys.stdin.reconfigure(encoding="utf-8")
-    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stdout.reconfigure(encoding="utf-8", newline="\n")   # JSON-RPC : une ligne par message, LF
     for line in sys.stdin:
         line = line.strip()
         if not line:

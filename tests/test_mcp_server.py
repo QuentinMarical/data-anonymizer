@@ -23,13 +23,15 @@ class McpServerTests(unittest.TestCase):
         (self.root / "src" / "conf.py").write_text(
             'OWNER = "Client Durand SA"\nAPI = "http://srv-app01:8080/api"\n', encoding="utf-8")
         env = dict(os.environ, CLAUDE_PROJECT_DIR=str(self.root))
+        # stderr ignoré : un tube non lu pourrait se remplir et bloquer le serveur
         self.proc = subprocess.Popen([sys.executable, str(SERVER)], stdin=subprocess.PIPE,
-                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+                                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, env=env)
         self.next_id = 1
 
     def tearDown(self):
         self.proc.stdin.close()
         self.proc.wait(timeout=10)
+        self.proc.stdout.close()
         self._tmp.cleanup()
 
     def send(self, method, params=None):
@@ -37,7 +39,10 @@ class McpServerTests(unittest.TestCase):
         self.next_id += 1
         self.proc.stdin.write((json.dumps(msg) + "\n").encode("utf-8"))
         self.proc.stdin.flush()
-        return json.loads(self.proc.stdout.readline().decode("utf-8"))
+        line = self.proc.stdout.readline()
+        if not line:
+            raise AssertionError("le serveur s'est arrêté sans répondre")
+        return json.loads(line.decode("utf-8"))
 
     def tool(self, name, arguments):
         resp = self.send("tools/call", {"name": name, "arguments": arguments})
@@ -47,7 +52,34 @@ class McpServerTests(unittest.TestCase):
         init = self.send("initialize")
         self.assertEqual(init["result"]["serverInfo"]["name"], "data-anonymizer")
         names = [t["name"] for t in self.send("tools/list")["result"]["tools"]]
-        self.assertEqual(names, ["scan", "mask", "restore", "alias"])
+        self.assertEqual(names, ["scan", "mask", "restore", "alias", "guard_status", "guard_enable"])
+        self.assertNotIn("guard_disable", names)
+
+    def test_guard_status_puis_enable(self):
+        text = self.tool("guard_status", {})["content"][0]["text"]
+        self.assertIn("INACTIF", text)
+        enabled = self.tool("guard_enable", {})
+        self.assertFalse(enabled["isError"])
+        self.assertIn("ACTIF", enabled["content"][0]["text"])
+        settings = json.loads((self.root / ".claude" / "settings.local.json").read_text(encoding="utf-8"))
+        self.assertIn("guard_hook.py", json.dumps(settings["hooks"]))
+        self.assertIn("ACTIF", self.tool("guard_status", {})["content"][0]["text"])
+        self.assertNotIn("INACTIF", self.tool("guard_status", {})["content"][0]["text"])
+
+    def test_guard_disable_n_existe_pas(self):
+        resp = self.send("tools/call", {"name": "guard_disable", "arguments": {}})
+        self.assertEqual(resp["error"]["code"], -32602)
+
+    def test_json_invalide_ne_tue_pas_le_serveur(self):
+        settings = self.root / ".claude" / "settings.local.json"
+        settings.parent.mkdir(parents=True, exist_ok=True)
+        settings.write_text("{pas du json", encoding="utf-8")
+        result = self.tool("guard_enable", {})
+        self.assertTrue(result["isError"])
+        self.assertEqual(settings.read_text(encoding="utf-8"), "{pas du json")
+        status = self.tool("guard_status", {})               # le serveur tourne toujours
+        self.assertTrue(status["isError"])
+        self.assertEqual(settings.read_text(encoding="utf-8"), "{pas du json")
 
     def test_scan_ne_renvoie_aucune_valeur(self):
         text = self.tool("scan", {"path": "src/conf.py"})["content"][0]["text"]

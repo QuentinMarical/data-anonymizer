@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "data-anonymizer": {
+      "command": "python",
+      "args": [
+        "C:/CHEMIN/VERS/data-anonymizer/scripts/mcp_server.py"
+      ],
+      "env": {
+        "CLAUDE_PROJECT_DIR": "C:/CHEMIN/VERS/VOTRE/PROJET"
+      }
+    }
+  }
+}
