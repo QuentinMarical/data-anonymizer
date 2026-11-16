@@ -22,9 +22,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import anonymize as A  # noqa: E402
 
+# Commandes Unix : sensibles à la casse (sinon « HEAD » de git serait pris pour « head »).
+# Cmdlets PowerShell : insensibles à la casse.
 READERS = re.compile(
-    r"(?i)(?<![\w-])(cat|bat|type|more|less|head|tail|grep|egrep|rg|findstr|sed|awk|strings|xxd|od"
-    r"|get-content|gc|select-string|sls|import-csv|sqlite3|psql|mysql|sqlcmd|mongosh"
+    r"(?<![\w-])(cat|bat|type|more|less|head|tail|grep|egrep|rg|findstr|sed|awk|strings|xxd|od"
+    r"|gc|sls|sqlite3|psql|mysql|sqlcmd|mongosh"
+    r"|(?i:get-content|select-string|import-csv)"
     r"|git\s+(?:show|diff|blame|grep|log\s+-p))(?![\w-])")
 EXTERNAL = {"WebSearch", "WebFetch", "Artifact"}
 # Fichiers qui lisent réellement le contenu (évalués sur la commande nettoyée des chaînes)
