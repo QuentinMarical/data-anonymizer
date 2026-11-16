@@ -13,6 +13,8 @@ SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
 HOOK = SCRIPTS / "guard_hook.py"
 ANON = SCRIPTS / "anonymize.py"
 SKILL_MD = Path(__file__).resolve().parent.parent / "SKILL.md"
+sys.path.insert(0, str(SCRIPTS))
+import toggle as T  # noqa: E402
 
 TERMS = """Client Durand SA
 deny-path:secrets/*
@@ -117,6 +119,93 @@ class GuardTests(unittest.TestCase):
     def test_ecriture_table_d_alias(self):
         self.check("DENY", "Write", {"file_path": str(self.root / ".anonymizer" / "mapping.json"),
                                      "content": "{}"})
+
+
+class ToggleTests(unittest.TestCase):
+    """Fusion de .claude/settings.local.json : on et off ne touchent qu'au garde."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.proj = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def write_settings(self, data):
+        path = T.settings_path(self.proj)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data), encoding="utf-8")
+
+    def read_settings(self):
+        return json.loads(T.settings_path(self.proj).read_text(encoding="utf-8"))
+
+    def other_hooks(self):
+        return {
+            "PostToolUse": [{"matcher": "Write|Edit",
+                             "hooks": [{"type": "command", "command": "prettier --write x"}]}],
+            "PreToolUse": [{"matcher": "Bash",
+                            "hooks": [{"type": "command", "command": "echo mine"}]}],
+        }
+
+    def test_on_cree_les_hooks_et_le_fichier_de_termes(self):
+        T.enable(self.proj)
+        self.assertTrue(T.is_active(self.proj))
+        self.assertIn("UserPromptSubmit", self.read_settings()["hooks"])
+        self.assertTrue((self.proj / ".anonymizer" / "terms.txt").exists())
+        self.assertTrue((self.proj / ".anonymizer" / ".gitignore").exists())
+
+    def test_on_pointe_vers_le_script_absolu(self):
+        T.enable(self.proj)
+        self.assertIn(T.GUARD.resolve().as_posix(), json.dumps(self.read_settings()))
+
+    def test_on_preserve_hooks_et_permissions(self):
+        self.write_settings({"permissions": {"allow": ["Bash(git *)"]}, "hooks": self.other_hooks()})
+        T.enable(self.proj)
+        data = self.read_settings()
+        self.assertEqual(data["permissions"], {"allow": ["Bash(git *)"]})
+        self.assertIn(self.other_hooks()["PostToolUse"][0], data["hooks"]["PostToolUse"])
+        self.assertIn(self.other_hooks()["PreToolUse"][0], data["hooks"]["PreToolUse"])
+        self.assertEqual(len(data["hooks"]["PreToolUse"]), 2)   # le hook existant + le garde
+
+    def test_on_est_idempotent(self):
+        T.enable(self.proj)
+        first = self.read_settings()
+        T.enable(self.proj)
+        self.assertEqual(self.read_settings(), first)
+
+    def test_off_retire_seulement_le_garde(self):
+        self.write_settings({"permissions": {"allow": ["Read"]}, "hooks": self.other_hooks()})
+        T.enable(self.proj)
+        T.disable(self.proj)
+        self.assertEqual(self.read_settings(),
+                         {"permissions": {"allow": ["Read"]}, "hooks": self.other_hooks()})
+
+    def test_off_nettoie_les_cles_vides(self):
+        T.enable(self.proj)
+        T.disable(self.proj)
+        self.assertEqual(self.read_settings(), {})
+        self.assertFalse(T.is_active(self.proj))
+
+    def test_off_ne_supprime_pas_la_table_d_alias(self):
+        T.enable(self.proj)
+        (self.proj / ".anonymizer" / "mapping.json").write_text("{}", encoding="utf-8")
+        T.disable(self.proj)
+        self.assertTrue((self.proj / ".anonymizer" / "mapping.json").exists())
+        self.assertTrue((self.proj / ".anonymizer" / "terms.txt").exists())
+
+    def test_toggle_bascule(self):
+        self.assertEqual(T.toggle(self.proj), "on")
+        self.assertTrue(T.is_active(self.proj))
+        self.assertEqual(T.toggle(self.proj), "off")
+        self.assertFalse(T.is_active(self.proj))
+
+    def test_json_invalide_refuse_sans_rien_ecraser(self):
+        path = T.settings_path(self.proj)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{pas du json", encoding="utf-8")
+        with self.assertRaises(SystemExit):
+            T.enable(self.proj)
+        self.assertEqual(path.read_text(encoding="utf-8"), "{pas du json")
 
 
 if __name__ == "__main__":

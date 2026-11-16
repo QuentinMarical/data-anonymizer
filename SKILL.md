@@ -90,7 +90,24 @@ python <dossier-de-la-skill>/scripts/anonymize.py alias "Nom du client"
 
 - **Consulter la table** : ouvrir `.anonymizer/mapping.json` dans son éditeur.
 
-## Activer le garde
+## Activer ou désactiver le garde rapidement
+
+Le plus simple est la commande de bascule, qui fusionne les hooks dans `.claude/settings.local.json` du projet sans toucher aux autres hooks ni aux permissions :
+
+```bash
+python <dossier-de-la-skill>/scripts/toggle.py --project <dossier-du-projet> on
+python <dossier-de-la-skill>/scripts/toggle.py --project <dossier-du-projet> off
+python <dossier-de-la-skill>/scripts/toggle.py --project <dossier-du-projet> status
+python <dossier-de-la-skill>/scripts/toggle.py --project <dossier-du-projet> toggle
+```
+
+- `on` crée aussi `.anonymizer/terms.txt` s'il n'existe pas.
+- `off` retire uniquement les hooks du garde. Il ne supprime jamais `.anonymizer/mapping.json` ni `terms.txt`.
+- Sous Windows, double-cliquer sur `assets/toggle-anonymizer.bat` (ou glisser le dossier du projet dessus). Sous Linux et macOS, `sh assets/toggle-anonymizer.sh [dossier]` après `chmod +x`.
+
+**Limite de Claude Code** : après `on` ou `off`, il faut redémarrer la session (`/exit` puis `claude`). Claude Code ne recharge `settings.local.json` qu'au démarrage : tant que la session n'est pas redémarrée, le garde reste dans son état précédent.
+
+## Activer le garde à la main
 
 À faire par projet, sur demande de l'utilisateur uniquement :
 
@@ -116,6 +133,9 @@ python <dossier-de-la-skill>/scripts/anonymize.py alias "Nom du client"
 
 - `scripts/anonymize.py` : `mask`, `scan`, `restore`, `alias` (Python 3, sans dépendance).
 - `scripts/guard_hook.py` : garde local appelé par les hooks.
+- `scripts/toggle.py` : active, désactive ou affiche l'état du garde dans un projet.
+- `assets/toggle-anonymizer.bat` et `assets/toggle-anonymizer.sh` : lanceurs de la bascule.
+- `tests/test_guard.py` (dépôt) : tests du garde et de la fusion des hooks (`python -m unittest discover -s tests`).
 - `assets/settings.hooks.example.json` : configuration des hooks à fusionner.
 - `assets/terms.example.txt` : modèle de fichier de termes.
 - `references/categories.md` : catégories détectées, faux positifs connus, ajout d'une catégorie.
